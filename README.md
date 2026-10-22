@@ -1,196 +1,88 @@
-# naver-mail-mcp
+# Naver Mail Plugin
 
-Naver Mail MCP Server for Claude Desktop.
+**NMP**는 웹 ChatGPT에서 내 네이버 메일을 검색하고 읽고, 초안을 저장하거나 확인 후 발송하는 개인용 MCP 플러그인입니다.
 
-네이버 메일을 Claude Desktop에서 Gmail MCP처럼 사용할 수 있게 해주는 MCP(Model Context Protocol) 서버입니다.
+Linux 서버에 Docker Compose로 실행하면 개인 PC를 꺼도 사용할 수 있습니다. 서버의 stdio MCP를 OpenAI Secure MCP Tunnel에 연결하므로, 이 구성을 위해 공개 HTTP 포트나 도메인을 준비할 필요가 없습니다. **서버 자체는 켜져 있어야 합니다.**
 
-## Features
+## 서버에서 시작하기
 
-| Tool | Description |
-|------|-------------|
-| `get_profile` | 계정 프로필 조회 (이메일, 이름, 총 메일 수, 안읽은 수) |
-| `search_emails` | 메일 검색 (발신자, 수신자, 제목, 날짜, 읽음 여부) + 페이지네이션 |
-| `read_email` | UID로 메일 전체 읽기 (헤더, 본문, 첨부파일 메타정보) |
-| `read_thread` | Message-ID 기반 대화 스레드 조회 |
-| `list_folders` | 메일함 폴더 목록 조회 (메시지 수, 안읽은 수 포함) |
-| `create_draft` | 새 메일 초안을 Drafts 폴더에 저장 |
-| `list_drafts` | Drafts 폴더의 초안 목록 조회 |
-| `send_email` | SMTP로 메일 발송 (새 메일, 답장) |
-| `download_attachment` | 첨부파일 다운로드 (base64 인코딩) |
+필요한 것:
 
-## Installation
+- Docker Engine과 Docker Compose가 설치된 Linux 서버
+- IMAP/SMTP 사용 설정과 전용 앱 비밀번호를 준비한 네이버 계정
+- 개인 OpenAI Tunnel ID와 해당 Tunnel의 Read + Use 권한이 있는 런타임 키
+- 사용자 지정 MCP/Tunnel 연결을 추가할 수 있는 ChatGPT 계정
 
 ```bash
-uvx naver-mail-mcp
-```
-
-## Claude Desktop Configuration
-
-### PyPI 배포 후 (권장)
-
-`claude_desktop_config.json`에 추가:
-
-```json
-{
-  "mcpServers": {
-    "naver-email": {
-      "command": "uvx",
-      "args": ["naver-mail-mcp"],
-      "env": {
-        "NAVER_EMAIL_ADDRESS": "your_email@naver.com",
-        "NAVER_EMAIL_PASSWORD": "your_app_password",
-        "NAVER_FULL_NAME": "Your Name"
-      }
-    }
-  }
-}
-```
-
-### 로컬 개발 모드
-
-PyPI에 배포하기 전, 로컬 소스에서 직접 실행:
-
-```json
-{
-  "mcpServers": {
-    "naver-email": {
-      "command": "/absolute/path/to/uv",
-      "args": [
-        "--directory",
-        "/absolute/path/to/naver-mail-mcp",
-        "run",
-        "naver-mail-mcp"
-      ],
-      "env": {
-        "NAVER_EMAIL_ADDRESS": "your_email@naver.com",
-        "NAVER_EMAIL_PASSWORD": "your_app_password",
-        "NAVER_FULL_NAME": "Your Name"
-      }
-    }
-  }
-}
-```
-
-> **주의:** Claude Desktop은 시스템 PATH를 상속하지 않습니다. `command`에는 반드시 `uv`의 **절대 경로**를 사용하세요. (예: `/Users/username/.local/bin/uv`)
->
-> `which uv` 명령으로 절대 경로를 확인할 수 있습니다.
-
-## Prerequisites
-
-1. **Python 3.10+**
-2. **네이버 계정**에서 IMAP/SMTP 사용 설정
-   - 네이버 메일 → 설정 → POP3/IMAP 설정 → IMAP/SMTP 사용 ✅
-3. **애플리케이션 비밀번호** 발급 (2단계 인증 필수)
-   - 네이버 → 내 정보 → 보안설정 → 2단계 인증 → 애플리케이션 비밀번호 관리
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `NAVER_EMAIL_ADDRESS` | Yes | 네이버 이메일 주소 |
-| `NAVER_EMAIL_PASSWORD` | Yes | 애플리케이션 비밀번호 (계정 비밀번호 아님) |
-| `NAVER_FULL_NAME` | No | 발신 메일 표시 이름 |
-
-## Tools Reference
-
-### get_profile
-계정 프로필 조회. 파라미터 없음.
-
-### search_emails
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| folder | string | No | INBOX | 검색할 폴더 |
-| sender | string | No | - | 발신자 필터 |
-| recipient | string | No | - | 수신자 필터 |
-| subject | string | No | - | 제목 키워드 |
-| date_from | string | No | - | 시작 날짜 (DD-Mon-YYYY) |
-| date_to | string | No | - | 종료 날짜 (DD-Mon-YYYY) |
-| is_read | boolean | No | - | 읽음 여부 (true/false/null) |
-| page | integer | No | 1 | 페이지 번호 |
-| page_size | integer | No | 20 | 페이지당 결과 수 (최대 100) |
-
-### read_email
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| uid | string | Yes | - | 메일 고유 ID |
-| folder | string | No | INBOX | 폴더 |
-
-### read_thread
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| message_id | string | Yes | - | Message-ID 헤더 값 |
-| folder | string | No | INBOX | 폴더 |
-
-### list_folders
-폴더 목록 조회. 파라미터 없음.
-
-### create_draft
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| to | array | Yes | - | 수신자 목록 |
-| subject | string | Yes | - | 제목 |
-| body | string | Yes | - | 본문 |
-| body_type | string | No | text/plain | text/plain 또는 text/html |
-| cc | array | No | - | 참조 목록 |
-
-### list_drafts
-초안 목록 조회. 파라미터 없음.
-
-### send_email
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| to | array | Yes | - | 수신자 목록 |
-| subject | string | Yes | - | 제목 |
-| body | string | Yes | - | 본문 |
-| body_type | string | No | text/plain | text/plain 또는 text/html |
-| cc | array | No | - | 참조 목록 |
-| in_reply_to | string | No | - | 답장 대상 Message-ID |
-| references | array | No | - | 스레드 Message-ID 목록 |
-
-### download_attachment
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| uid | string | Yes | - | 메일 고유 ID |
-| part_number | string | Yes | - | MIME 파트 번호 (read_email에서 확인) |
-| folder | string | No | INBOX | 폴더 |
-
-## Development
-
-```bash
-# Clone and install
-git clone https://github.com/chanmuzi/naver-mail-mcp.git
-cd naver-mail-mcp
-uv venv --python 3.12 .venv
-source .venv/bin/activate
-uv pip install -e .
-
-# Set credentials
+git clone https://github.com/kdHyeok/NMP.git
+cd NMP
 cp .env.example .env
-# Edit .env with your credentials
-
-# Run tests
-python -m tests.test_integration
 ```
 
-## Troubleshooting
+`.env`에 메일 주소와 Tunnel ID를 설정하고, 비밀값 두 개를 `.secrets/`에 준비한 다음 실행합니다.
 
-| Error | Solution |
-|-------|----------|
-| `IMAP authentication failed` | 앱 비밀번호 확인. 계정 비밀번호가 아닌 애플리케이션 비밀번호 사용 |
-| `Cannot connect to Naver IMAP server` | 네트워크 확인, IMAP 사용 설정 확인 |
-| `Missing required environment variables` | NAVER_EMAIL_ADDRESS, NAVER_EMAIL_PASSWORD 환경변수 설정 |
-| `Folder not found` | `list_folders` 도구로 사용 가능한 폴더명 확인 |
-| `Failed to spawn process` | `command`에 `uv`의 절대 경로 사용 (`which uv`로 확인) |
+```bash
+docker compose up -d --build
+docker compose ps
+```
 
-## Technical Details
+**비밀 파일 생성, 권한 설정, ChatGPT 등록과 재부팅 운영까지는 [서버 배포 가이드](docs/server-deployment.md)를 따라 주세요.** 실제 키를 명령 인자나 Git에 넣지 않습니다.
 
-- **IMAP**: `imap.naver.com:993` (SSL/TLS)
-- **SMTP**: `smtp.naver.com:465` (SSL)
-- **Transport**: stdio (Claude Desktop 연동)
-- **Encoding**: UTF-8, EUC-KR, Modified UTF-7 (폴더명) 자동 처리
-- **Connection**: 각 도구 호출마다 새 연결 (stateless)
-- **Attachment limit**: 10MB (base64 인코딩)
+구성은 `ChatGPT → 개인 OpenAI Tunnel → 서버의 tunnel-client → Naver Mail MCP → 네이버 IMAP/SMTP` 순서입니다. 컨테이너의 재시작 정책은 `unless-stopped`이고, 준비 상태 검사와 로그 용량 제한을 포함합니다. 호스트 Docker도 부팅 시 시작되어야 합니다.
 
-## License
+## 제공 기능
 
-MIT
+| 도구 | 기능 |
+|---|---|
+| `get_profile` | 계정 프로필, 전체 메일 수와 안 읽은 수 |
+| `search_emails` | 발신자·수신자·제목·날짜·읽음 상태로 검색, 페이지 조회 |
+| `read_email` | 메일 본문과 헤더, 첨부파일 정보 읽기 |
+| `read_thread` | Message-ID 기반 대화 조회 |
+| `list_folders` | 메일함 목록과 메일 수 조회 |
+| `create_draft` | 네이버 메일함에 초안 저장 |
+| `list_drafts` | 초안 목록 조회 |
+| `send_email` | 정확한 수신자와 내용을 확인받은 후 발송 |
+| `download_attachment` | 첨부파일을 base64로 반환 |
+
+예: “제목에 회의가 들어간 최근 메일 5개를 찾아서 요약해줘.”
+
+`send_email`은 MCP 확인 창에서 승인한 경우에만 SMTP를 호출합니다. 취소·거절·확인 기능 미지원이면 보내지 않습니다. 해당 ChatGPT 연결에서 확인 기능을 사용할 수 없다면 초안으로 저장하고 네이버에서 발송하세요. 오류나 부분 발송 결과는 자동으로 재시도하지 않습니다.
+
+## 개인용 접근과 비밀정보
+
+- 네이버 계정 하나를 컨테이너 설정으로 고정하며, 계정 비밀번호를 도구 인자로 받지 않습니다.
+- 비밀 파일은 Compose secrets로 `/run/secrets/`에 마운트합니다. 이미지와 저장소에 포함하지 않습니다.
+- 일반 환경변수 `NAVER_EMAIL_PASSWORD`도 로컬 stdio 실행에서는 지원합니다. Docker는 `NAVER_EMAIL_PASSWORD_FILE`을 사용합니다.
+- 컨테이너는 일반 사용자로 실행하고 루트 파일시스템은 읽기 전용입니다. 공개 포트를 열지 않습니다.
+- Tunnel 접근 권한은 본인 계정으로 한정하세요. 공개 GitHub 저장소가 플러그인이나 메일 접근 권한을 공개한다는 뜻은 아닙니다. 다중 사용자 OAuth와 사용자별 계정 분리는 제공하지 않습니다.
+- 이메일 본문과 첨부파일은 외부 데이터입니다. 그 안의 지시문을 실행하도록 요청하지 마세요.
+
+## 개발과 로컬 실행
+
+공식 Python MCP SDK **v2**, 잠금 파일 기준 `mcp` **2.3.0**을 사용합니다. Python 패키지와 실행 명령은 호환성을 위해 `naver-mail-mcp`를 유지합니다. 이 수정본은 저장소에서 설치하며 PyPI에 별도 배포하지 않았습니다.
+
+```bash
+uv sync --frozen
+uv run --frozen python -m unittest tests.test_unit -v
+```
+
+컨테이너 안에서 같은 오프라인 테스트를 실행할 수도 있습니다.
+
+```bash
+docker build --target test -t nmp:test .
+docker run --rm nmp:test
+```
+
+Windows PC에서 직접 실행할 때는 [로컬 ChatGPT 연결 가이드](docs/chatgpt-setup.md)를 사용하세요. 로컬 실행은 PC가 켜져 있어야 합니다.
+
+## 제한과 검증
+
+메일 전체 크기는 25MiB, 첨부 하나는 디코딩 후 5MiB, 도구 결과는 JSON 재인코딩 기준 8MiB까지입니다. 큰 스레드는 메일별로 나눠 읽으세요. IMAP/SMTP 서버 인증서를 검증하며, 본문 조회에는 읽음 상태를 바꾸지 않는 `BODY.PEEK`를 사용합니다.
+
+오프라인 테스트는 IMAP/SMTP 모의 응답과 실제 stdio 하위 프로세스를 사용합니다. 실제 네이버 로그인·발송과 개인 Tunnel의 ChatGPT 호출은 계정 설정 후 별도 검증해야 합니다. 검증 내역은 [테스트 기록](docs/test-results.md)에 있습니다.
+
+## 출처와 라이선스
+
+[chanmuzi/naver-mail-mcp](https://github.com/chanmuzi/naver-mail-mcp)를 기반으로 개인 ChatGPT 연결, 발송 확인과 입력 검증, 공식 SDK v2, Docker Compose 운영 구성을 적용했습니다. 원본의 저작권 표시와 [MIT 라이선스](LICENSE)를 유지합니다.
+
+참고: [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels), [공식 Python MCP SDK](https://py.sdk.modelcontextprotocol.io/), [Docker Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/).

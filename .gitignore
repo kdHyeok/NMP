@@ -11,11 +11,16 @@ build/
 
 # Virtual environments
 .venv/
+.uv-cache/
+.tools/
 venv/
 env/
 
 # Environment variables
 .env
+.env.*
+!.env.example
+.secrets/
 
 # IDE
 .vscode/

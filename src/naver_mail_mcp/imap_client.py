@@ -9,6 +9,8 @@ import email.header
 import email.utils
 import imaplib
 import re
+import ssl
+from datetime import date
 from typing import Generator
 
 from .models import (
@@ -25,7 +27,9 @@ IMAP_HOST = "imap.naver.com"
 IMAP_PORT = 993
 TIMEOUT = 30
 MAX_PAGE_SIZE = 100
-MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_EMAIL_BYTES = 25 * 1024 * 1024
+# Base64 and JSON must fit within Secure MCP Tunnel's 10 MiB response limit.
+MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
 ALLOWED_BODY_TYPES = {"text/plain", "text/html"}
 
 
@@ -57,23 +61,65 @@ class EmailNotFoundError(NaverIMAPError):
 
 def _sanitize_folder_name(folder: str) -> str:
     """Ensure folder name cannot break IMAP quoted-string syntax."""
-    if '"' in folder or "\r" in folder or "\n" in folder or "\x00" in folder:
-        raise ValueError(f"Invalid folder name: contains prohibited characters.")
+    if not folder or '"' in folder or any(ord(c) < 32 or ord(c) == 127 for c in folder):
+        raise ValueError("Invalid folder name: empty or contains prohibited characters.")
     return folder
 
 
 def _sanitize_message_id(value: str) -> str:
     """Reject Message-IDs containing characters that could break IMAP search."""
-    if not value or '"' in value or "\r" in value or "\n" in value:
+    if not value or not value.isascii() or any(ord(c) < 32 or ord(c) == 127 for c in value):
         raise ValueError("Invalid Message-ID: contains prohibited characters.")
     return value
 
 
 def _sanitize_uid(uid: str) -> str:
     """Ensure UID contains only digits."""
-    if not uid or not uid.strip().isdigit():
+    if not re.fullmatch(r"[1-9][0-9]*", uid.strip()):
         raise ValueError(f"Invalid UID: must be a positive integer, got '{uid}'.")
     return uid.strip()
+
+
+def _quote_imap(value: str) -> str:
+    """Quote one IMAP string without allowing command delimiters."""
+    if any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise ValueError("IMAP value contains prohibited control characters.")
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _folder_arg(folder: str) -> str:
+    folder = _sanitize_folder_name(folder)
+    return _quote_imap(encode_mutf7(folder) if not folder.isascii() else folder)
+
+
+def _search_date(value: str) -> str:
+    match = re.fullmatch(r"([0-9]{1,2})-([A-Za-z]{3})-([0-9]{4})", value)
+    if not match:
+        raise ValueError("Search dates must use DD-Mon-YYYY.")
+    day, month, year = match.groups()
+    months = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+    try:
+        date(int(year), months.index(month.title()) + 1, int(day))
+    except ValueError as exc:
+        raise ValueError("Invalid search date.") from exc
+    return f"{int(day):02d}-{month.title()}-{year}"
+
+
+def _search_uids(conn: imaplib.IMAP4_SSL, *criteria: str, literal: str | None = None) -> list[bytes]:
+    """Use a synchronizing literal for UTF-8 text, never drop a failed filter."""
+    try:
+        if literal is not None:
+            conn.literal = literal.encode("utf-8")
+            status, data = conn.uid("SEARCH", "CHARSET", "UTF-8", *criteria)
+        else:
+            status, data = conn.uid("SEARCH", *criteria)
+    except imaplib.IMAP4.error as exc:
+        raise NaverIMAPError("Search failed; the server may not support the requested charset.") from exc
+    finally:
+        conn.literal = None
+    if status != "OK":
+        raise NaverIMAPError("Search failed; filters were not changed or removed.")
+    return data[0].split() if data and data[0] else []
 
 
 def _sanitize_header_value(value: str) -> str:
@@ -110,7 +156,9 @@ def imap_connection(email_address: str, password: str) -> Generator[imaplib.IMAP
     Login errors are caught separately from operation errors.
     """
     try:
-        conn = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, timeout=TIMEOUT)
+        conn = imaplib.IMAP4_SSL(
+            IMAP_HOST, IMAP_PORT, ssl_context=ssl.create_default_context(), timeout=TIMEOUT
+        )
     except (OSError, imaplib.IMAP4.error) as e:
         raise NaverConnectionError(
             f"Cannot connect to Naver IMAP server ({IMAP_HOST}:{IMAP_PORT}). "
@@ -227,8 +275,10 @@ def _parse_date(date_str: str | None) -> str:
     """Parse email date to ISO 8601 string."""
     if not date_str:
         return ""
-    parsed = email.utils.parsedate_to_datetime(date_str)
-    return parsed.isoformat()
+    try:
+        return email.utils.parsedate_to_datetime(date_str).isoformat()
+    except (ValueError, TypeError, OverflowError):
+        return ""
 
 
 def _parse_address(addr: str | None) -> str:
@@ -252,7 +302,7 @@ def _parse_address_list(header: str | None) -> list[str]:
 
 def get_profile(conn: imaplib.IMAP4_SSL, email_address: str, full_name: str) -> Profile:
     """Get account profile with mailbox statistics."""
-    status, data = conn.select("INBOX")
+    status, data = conn.select("INBOX", readonly=True)
     if status != "OK":
         raise NaverIMAPError("Failed to select INBOX.")
 
@@ -298,7 +348,7 @@ def list_folders(conn: imaplib.IMAP4_SSL) -> list[Folder]:
         msg_count = 0
         unseen_count = 0
         try:
-            status, count_data = conn.status(f'"{raw_name}"', "(MESSAGES UNSEEN)")
+            status, count_data = conn.status(_folder_arg(raw_name), "(MESSAGES UNSEEN)")
             if status == "OK" and count_data[0]:
                 count_str = count_data[0].decode("utf-8") if isinstance(count_data[0], bytes) else count_data[0]
                 msg_match = re.search(r"MESSAGES\s+(\d+)", count_str)
@@ -399,24 +449,20 @@ def search_emails(
     page_size: int = 20,
 ) -> SearchResult:
     """Search emails with filters and pagination."""
-    folder = _sanitize_folder_name(folder)
     page, page_size = _validate_pagination(page, page_size)
-    status, _ = conn.select(f'"{folder}"', readonly=True)
-    if status != "OK":
-        raise FolderNotFoundError(f"Folder '{folder}' not found. Use list_folders to see available folders.")
-
     criteria = []
-
-    if sender:
-        criteria.extend(["FROM", sender])
-    if recipient:
-        criteria.extend(["TO", recipient])
-    if subject:
-        criteria.extend(["SUBJECT", subject])
+    unicode_filters = []
+    for key, value in (("FROM", sender), ("TO", recipient), ("SUBJECT", subject)):
+        if value:
+            quoted = _quote_imap(value)
+            if value.isascii():
+                criteria.extend([key, quoted])
+            else:
+                unicode_filters.append((key, value))
     if date_from:
-        criteria.extend(["SINCE", date_from])
+        criteria.extend(["SINCE", _search_date(date_from)])
     if date_to:
-        criteria.extend(["BEFORE", date_to])
+        criteria.extend(["BEFORE", _search_date(date_to)])
     if is_read is True:
         criteria.append("SEEN")
     elif is_read is False:
@@ -425,18 +471,18 @@ def search_emails(
     if not criteria:
         criteria.append("ALL")
 
-    try:
-        if any(not c.isascii() for c in criteria if isinstance(c, str)):
-            status, data = conn.uid("SEARCH", "CHARSET", "UTF-8", *criteria)
-        else:
-            status, data = conn.uid("SEARCH", *criteria)
-    except imaplib.IMAP4.error:
-        status, data = conn.uid("SEARCH", *[c for c in criteria if c.isascii()])
-
+    status, _ = conn.select(_folder_arg(folder), readonly=True)
     if status != "OK":
-        raise NaverIMAPError("Search failed.")
+        raise FolderNotFoundError(f"Folder '{folder}' not found. Use list_folders to see available folders.")
 
-    uid_list = data[0].split() if data[0] else []
+    if unicode_filters:
+        key, value = unicode_filters[0]
+        uid_list = _search_uids(conn, *criteria, key, literal=value)
+        for key, value in unicode_filters[1:]:
+            matching = set(_search_uids(conn, key, literal=value))
+            uid_list = [uid for uid in uid_list if uid in matching]
+    else:
+        uid_list = _search_uids(conn, *criteria)
     uid_list.reverse()
 
     total_count = len(uid_list)
@@ -492,17 +538,23 @@ def _fetch_email_summary(conn: imaplib.IMAP4_SSL, uid: bytes) -> EmailSummary | 
     )
 
 
-def read_email(conn: imaplib.IMAP4_SSL, uid: str, folder: str = "INBOX") -> Email:
-    """Read a full email by UID."""
-    uid = _sanitize_uid(uid)
-    folder = _sanitize_folder_name(folder)
-    status, _ = conn.select(f'"{folder}"', readonly=True)
-    if status != "OK":
-        raise FolderNotFoundError(f"Folder '{folder}' not found. Use list_folders to see available folders.")
-
-    status, data = conn.uid("FETCH", uid, "(FLAGS RFC822)")
+def _fetch_message(conn: imaplib.IMAP4_SSL, uid: str) -> tuple[str, bytes]:
+    """Check the size before downloading and bound the fetch even if it changes."""
+    status, data = conn.uid("FETCH", uid, "(RFC822.SIZE)")
     if status != "OK" or not data or data[0] is None:
-        raise EmailNotFoundError(f"Email with UID '{uid}' not found in folder '{folder}'.")
+        raise EmailNotFoundError(f"Email with UID '{uid}' not found.")
+    meta = b" ".join(part for part in data if isinstance(part, bytes))
+    match = re.search(rb"RFC822.SIZE\s+(\d+)", meta)
+    if not match:
+        raise NaverIMAPError("The server did not return the email size.")
+    size = int(match.group(1))
+    if size > MAX_EMAIL_BYTES:
+        raise NaverIMAPError(f"Email exceeds the {MAX_EMAIL_BYTES:,}-byte download limit.")
+
+    # shortcut: fetch the whole message up to 25 MiB; use BODYSTRUCTURE for larger mail.
+    status, data = conn.uid("FETCH", uid, f"(FLAGS BODY.PEEK[]<0.{MAX_EMAIL_BYTES + 1}>)")
+    if status != "OK" or not data or data[0] is None:
+        raise EmailNotFoundError(f"Email with UID '{uid}' not found.")
 
     flags_str = ""
     raw_email = b""
@@ -514,6 +566,20 @@ def read_email(conn: imaplib.IMAP4_SSL, uid: str, folder: str = "INBOX") -> Emai
                 flags_str = flags_match.group(1)
             raw_email = part[1] if isinstance(part[1], bytes) else part[1].encode()
 
+    if len(raw_email) > MAX_EMAIL_BYTES:
+        raise NaverIMAPError("Email exceeded the download limit during fetch.")
+    if len(raw_email) != size:
+        raise NaverIMAPError("The server returned an incomplete email; retry the read.")
+    return flags_str, raw_email
+
+
+def read_email(conn: imaplib.IMAP4_SSL, uid: str, folder: str = "INBOX") -> Email:
+    """Read a full email by UID without changing its read status."""
+    uid = _sanitize_uid(uid)
+    status, _ = conn.select(_folder_arg(folder), readonly=True)
+    if status != "OK":
+        raise FolderNotFoundError(f"Folder '{folder}' not found. Use list_folders to see available folders.")
+    flags_str, raw_email = _fetch_message(conn, uid)
     msg = email.message_from_bytes(raw_email)
 
     subject = decode_header_value(msg.get("Subject"))
@@ -590,13 +656,12 @@ def read_thread(conn: imaplib.IMAP4_SSL, message_id: str, folder: str = "INBOX")
     All operations use a single connection.
     """
     message_id = _sanitize_message_id(message_id)
-    folder = _sanitize_folder_name(folder)
-    status, _ = conn.select(f'"{folder}"', readonly=True)
+    status, _ = conn.select(_folder_arg(folder), readonly=True)
     if status != "OK":
         raise FolderNotFoundError(f"Folder '{folder}' not found.")
 
     target_uid = None
-    status, data = conn.uid("SEARCH", None, f'HEADER Message-ID "{message_id}"')
+    status, data = conn.uid("SEARCH", None, "HEADER", "Message-ID", _quote_imap(message_id))
     if status == "OK" and data[0]:
         uids = data[0].split()
         if uids:
@@ -620,25 +685,26 @@ def read_thread(conn: imaplib.IMAP4_SSL, message_id: str, folder: str = "INBOX")
 
     all_uids = set()
     for mid in all_message_ids:
-        safe_mid = mid.replace('"', "").strip()
-        if not safe_mid:
+        try:
+            safe_mid = _quote_imap(_sanitize_message_id(mid.strip()))
+        except ValueError:
             continue
         try:
-            status, data = conn.uid("SEARCH", None, f'HEADER Message-ID "{safe_mid}"')
+            status, data = conn.uid("SEARCH", None, "HEADER", "Message-ID", safe_mid)
             if status == "OK" and data[0]:
                 all_uids.update(data[0].split())
         except imaplib.IMAP4.error:
             continue
 
         try:
-            status, data = conn.uid("SEARCH", None, f'HEADER References "{safe_mid}"')
+            status, data = conn.uid("SEARCH", None, "HEADER", "References", safe_mid)
             if status == "OK" and data[0]:
                 all_uids.update(data[0].split())
         except imaplib.IMAP4.error:
             continue
 
         try:
-            status, data = conn.uid("SEARCH", None, f'HEADER In-Reply-To "{safe_mid}"')
+            status, data = conn.uid("SEARCH", None, "HEADER", "In-Reply-To", safe_mid)
             if status == "OK" and data[0]:
                 all_uids.update(data[0].split())
         except imaplib.IMAP4.error:
@@ -661,7 +727,7 @@ def list_drafts(conn: imaplib.IMAP4_SSL) -> list[EmailSummary]:
     """List all drafts in the Drafts folder."""
     drafts_folder = _find_drafts_folder(conn)
 
-    status, _ = conn.select(f'"{drafts_folder}"', readonly=True)
+    status, _ = conn.select(_folder_arg(drafts_folder), readonly=True)
     if status != "OK":
         raise FolderNotFoundError("Could not select Drafts folder.")
 
@@ -714,7 +780,7 @@ def create_draft(
     raw_msg = msg.as_bytes()
 
     status, _ = conn.append(
-        f'"{drafts_folder}"',
+        _folder_arg(drafts_folder),
         "\\Draft",
         None,
         raw_msg,
@@ -737,20 +803,13 @@ def download_attachment(
     Returns the attachment content as base64-encoded string.
     """
     uid = _sanitize_uid(uid)
-    folder = _sanitize_folder_name(folder)
-    status, _ = conn.select(f'"{folder}"', readonly=True)
+    if not re.fullmatch(r"[1-9][0-9]*", part_number):
+        raise ValueError("part_number must be a positive integer from read_email.")
+    status, _ = conn.select(_folder_arg(folder), readonly=True)
     if status != "OK":
         raise FolderNotFoundError(f"Folder '{folder}' not found.")
 
-    status, data = conn.uid("FETCH", uid, "(RFC822)")
-    if status != "OK" or not data or data[0] is None:
-        raise EmailNotFoundError(f"Email with UID '{uid}' not found in folder '{folder}'.")
-
-    raw_email = b""
-    for part_data in data:
-        if isinstance(part_data, tuple):
-            raw_email = part_data[1] if isinstance(part_data[1], bytes) else part_data[1].encode()
-
+    _, raw_email = _fetch_message(conn, uid)
     msg = email.message_from_bytes(raw_email)
 
     counter = 0

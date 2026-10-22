@@ -1,0 +1,53 @@
+name: nmp
+
+services:
+  nmp:
+    image: nmp:local
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+    stop_grace_period: 30s
+    environment:
+      NAVER_EMAIL_ADDRESS: ${NAVER_EMAIL_ADDRESS:?Set NAVER_EMAIL_ADDRESS in .env}
+      NAVER_FULL_NAME: ${NAVER_FULL_NAME:-}
+      NAVER_EMAIL_PASSWORD_FILE: /run/secrets/naver_email_password
+      CONTROL_PLANE_TUNNEL_ID: ${CONTROL_PLANE_TUNNEL_ID:?Set CONTROL_PLANE_TUNNEL_ID in .env}
+    secrets:
+      - naver_email_password
+      - openai_tunnel_api_key
+    command:
+      - /opt/tunnel-client/tunnel-client
+      - run
+      - --control-plane.api-key
+      - file:/run/secrets/openai_tunnel_api_key
+      - --mcp.command
+      - /app/.venv/bin/python -B -m naver_mail_mcp.server
+      - --mcp.max-concurrent-requests
+      - "1"
+      - --mcp.stdio-send-initialized-notification
+      - --health.listen-addr
+      - 127.0.0.1:8080
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=4).close()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+secrets:
+  naver_email_password:
+    file: ./.secrets/naver_email_password
+  openai_tunnel_api_key:
+    file: ./.secrets/openai_tunnel_api_key

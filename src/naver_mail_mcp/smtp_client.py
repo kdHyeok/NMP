@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import smtplib
+import ssl
 from email.message import EmailMessage
+from email.utils import getaddresses
 
 
 SMTP_HOST = "smtp.naver.com"
@@ -41,6 +43,13 @@ def send_email(
     """
     if body_type not in ALLOWED_BODY_TYPES:
         raise ValueError(f"body_type must be one of {ALLOWED_BODY_TYPES}, got '{body_type}'.")
+    if not to:
+        raise ValueError("At least one recipient is required.")
+    for address in to + (cc or []):
+        _sanitize_header_value(address)
+    recipients = list(dict.fromkeys(address for _, address in getaddresses(to + (cc or []))))
+    if not recipients or any(not address or "@" not in address for address in recipients):
+        raise ValueError("Recipients must be valid email addresses.")
 
     msg = EmailMessage()
     if full_name:
@@ -64,9 +73,11 @@ def send_email(
         msg.set_content(body, charset="utf-8")
 
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+        with smtplib.SMTP_SSL(
+            SMTP_HOST, SMTP_PORT, timeout=30, context=ssl.create_default_context()
+        ) as server:
             server.login(email_address, password)
-            server.send_message(msg)
+            refused = server.send_message(msg, from_addr=email_address, to_addrs=recipients)
     except smtplib.SMTPAuthenticationError as e:
         raise NaverSMTPError(
             "SMTP authentication failed. "
@@ -82,4 +93,16 @@ def send_email(
             "Check your network connection."
         ) from e
 
-    return {"success": True, "message": f"Email sent to {', '.join(to)}"}
+    accepted = [address for address in recipients if address not in refused]
+    return {
+        "success": not refused,
+        "message": "Email sent." if not refused else "Partial delivery. Do not resend to accepted recipients.",
+        "accepted_recipients": accepted,
+        "refused_recipients": {
+            address: {
+                "code": code,
+                "message": reason.decode("utf-8", errors="replace") if isinstance(reason, bytes) else str(reason),
+            }
+            for address, (code, reason) in refused.items()
+        },
+    }

@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "naver-mail-mcp"
 version = "0.1.0"
-description = "Naver Mail MCP Server for Claude Desktop"
+description = "Naver Mail Plugin: personal Naver Mail tools for ChatGPT via MCP"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
     {name = "chanmuzi"},
 ]
-keywords = ["mcp", "naver", "email", "imap", "claude"]
+keywords = ["mcp", "naver", "email", "imap", "chatgpt"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
@@ -22,7 +22,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
-    "mcp>=1.2.0",
+    "mcp>=2.3.0,<3",
 ]
 
 [project.scripts]

@@ -1,36 +1,25 @@
 """Integration tests for Naver Mail MCP Server.
 
 Run with: python -m tests.test_integration
-Requires .env file with valid Naver credentials.
+Supply credentials as environment variables, or use uv run --env-file .env.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import sys
-from pathlib import Path
+from unittest import SkipTest
 
-# Load .env file
-env_path = Path(__file__).parent.parent / ".env"
-if env_path.exists():
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, _, value = line.partition("=")
-            os.environ[key.strip()] = value.strip()
-
-from naver_mail_mcp import imap_client, smtp_client
+from naver_mail_mcp import imap_client
 
 
 def get_creds():
-    email = os.environ.get("NAVER_EMAIL_ADDRESS", "")
-    password = os.environ.get("NAVER_EMAIL_PASSWORD", "")
-    full_name = os.environ.get("NAVER_FULL_NAME", "")
-    if not email or not password:
-        print("ERROR: Set NAVER_EMAIL_ADDRESS and NAVER_EMAIL_PASSWORD in .env")
-        sys.exit(1)
-    return email, password, full_name
+    if not os.environ.get("NAVER_EMAIL_ADDRESS") or not (
+        os.environ.get("NAVER_EMAIL_PASSWORD") or os.environ.get("NAVER_EMAIL_PASSWORD_FILE")
+    ):
+        raise SkipTest("Set the Naver address and password or password file to run live tests.")
+    from naver_mail_mcp.server import _get_credentials
+    return _get_credentials()
 
 
 def test_get_profile():
@@ -70,8 +59,7 @@ def test_read_email():
     with imap_client.imap_connection(email, password) as conn:
         result = imap_client.search_emails(conn, folder="INBOX", page=1, page_size=1)
         if not result.emails:
-            print("  SKIP: No emails in INBOX")
-            return True
+            raise SkipTest("No emails in INBOX")
         uid = result.emails[0].uid
         mail = imap_client.read_email(conn, uid, "INBOX")
     print(f"  uid: {mail.uid}")
@@ -101,13 +89,11 @@ def test_read_thread():
     with imap_client.imap_connection(email, password) as conn:
         result = imap_client.search_emails(conn, folder="INBOX", page=1, page_size=1)
         if not result.emails:
-            print("  SKIP: No emails in INBOX")
-            return True
+            raise SkipTest("No emails in INBOX")
         uid = result.emails[0].uid
         mail = imap_client.read_email(conn, uid, "INBOX")
         if not mail.message_id:
-            print("  SKIP: No Message-ID on first email")
-            return True
+            raise SkipTest("No Message-ID on first email")
         thread = imap_client.read_thread(conn, mail.message_id, "INBOX")
     print(f"  Thread has {len(thread)} emails")
     for t in thread:
@@ -127,8 +113,7 @@ def test_download_attachment():
                 content = imap_client.download_attachment(conn, mail.uid, att.part_number, "INBOX")
                 print(f"  Downloaded: {content.filename}, base64 length: {len(content.content_base64)}")
                 return True
-    print("  SKIP: No emails with attachments found in first 20 emails")
-    return True
+    raise SkipTest("No emails with attachments found in first 20 emails")
 
 
 def test_missing_env_vars():
@@ -173,7 +158,7 @@ ALL_TESTS = [
 ]
 
 
-if __name__ == "__main__":
+def run_tests(tests=ALL_TESTS) -> int:
     print("=" * 60)
     print("Naver Mail MCP Server — Integration Tests")
     print("=" * 60)
@@ -182,7 +167,7 @@ if __name__ == "__main__":
     failed = 0
     skipped = 0
 
-    for name, test_fn in ALL_TESTS:
+    for name, test_fn in tests:
         print(f"\n--- {name} ---")
         try:
             result = test_fn()
@@ -192,10 +177,18 @@ if __name__ == "__main__":
             else:
                 print(f"  RESULT: FAIL")
                 failed += 1
+        except SkipTest as e:
+            print(f"  RESULT: SKIP — {e}")
+            skipped += 1
         except Exception as e:
             print(f"  RESULT: ERROR — {type(e).__name__}: {e}")
             failed += 1
 
     print(f"\n{'=' * 60}")
-    print(f"Results: {passed} passed, {failed} failed")
+    print(f"Results: {passed} passed, {failed} failed, {skipped} skipped")
     print(f"{'=' * 60}")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(run_tests())
