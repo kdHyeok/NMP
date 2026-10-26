@@ -1,5 +1,24 @@
 # Test Results — Naver Mail Plugin
 
+## 2026-10-27 Windows 실계정·개인 Tunnel·웹 ChatGPT 연결 검증
+
+- 검증 코드: `7e401f0` (`feature: 개인별 암호화 설정과 비공개 Tunnel 설치 지원`)
+- 해당 커밋의 GitHub Actions에서 Windows·Ubuntu·macOS 오프라인 회귀 검사 PASS
+  ([실행 기록](https://github.com/kdHyeok/NMP/actions/runs/40399354276)).
+  Windows/Ubuntu는 각각 44 PASS·3 SKIP, macOS arm64는 43 PASS·4 SKIP
+- Windows의 숨김 입력으로 실제 자격증명을 설정하고 암호화 파일 읽기와 도구 등록 검사 PASS
+- 생성된 `.nmp/mcp.json`의 stdio 명령으로 도구 9개 검색, 실제 네이버 로그인·프로필·메일함 조회 PASS
+- 실제 받은메일함에서 5개 검색 및 1개 BODY.PEEK 읽기 PASS. 메일 내용·계정 정보는 검사 출력에 기록하지 않음
+- 공식 Windows tunnel-client v0.0.17 doctor PASS. 실제 키 인증 후 control-plane `polling`, 연속 실패 0 확인
+- ChatGPT 웹의 사용자 지정 MCP 추가에서 같은 Tunnel을 연결해 개인용 `Naver Mail Plugin` 생성 및 연결 PASS
+- 웹 대화에서 `get_profile`, `list_folders` 실제 호출 성공 확인. 서버 측에서도 요청 7건 완료·응답 7건 수락,
+  요청 오류·타임아웃·최종 응답 전송 실패 모두 0 확인. 이는 해당 검사 시점의 누적 값이다.
+- 실제 메일 발송·초안 생성은 수행하지 않음. 현재 기록에서 실계정 SMTP 발송, 첨부 다운로드,
+  대화 조회, 원격 서버 배포와 재부팅 후 복구까지 검증했다고 해석하지 않는다.
+- 계정 비밀값·Tunnel ID·메일 내용·개인 ChatGPT 대화는 Git에 포함하지 않는다.
+- 현재 배포물은 셀프 호스팅 MCP 서버와 설치기다. ChatGPT의 개인용 MCP 연결은 생성했지만,
+  별도 플러그인 패키지 배포나 공개 디렉터리 제출은 수행하지 않았다.
+
 ## 2026-10-27 개인별 설치·암호화 설정·비공개 Tunnel 검증
 
 - Windows / Python 3.12.12: `python -B -m unittest tests.test_unit tests.test_setup -v`

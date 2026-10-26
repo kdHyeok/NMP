@@ -47,6 +47,10 @@ uv run --frozen nmp setup --mode tunnel --replace
 
 ## 웹 ChatGPT
 
+이 절차는 실행 중인 MCP 서버 연결을 ChatGPT의 **개인용 플러그인**으로 생성한다.
+저장소에는 별도 배포용 플러그인 패키지(매니페스트·스킬 묶음)를 제공하지 않는다.
+각 사용자가 자기 서버와 Tunnel을 설정하며, ChatGPT 공개 디렉터리 배포와는 별개다.
+
 ```bash
 uv run --frozen nmp info
 uv run --frozen nmp doctor
