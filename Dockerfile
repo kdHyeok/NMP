@@ -25,7 +25,7 @@ RUN set -eu; \
 FROM build AS test
 COPY tests ./tests
 COPY scripts ./scripts
-CMD ["/app/.venv/bin/python", "-B", "-m", "unittest", "tests.test_unit", "tests.test_setup", "-v"]
+CMD ["/app/.venv/bin/python", "-B", "-m", "unittest", "tests.test_unit", "tests.test_setup", "tests.test_plugin_package", "-v"]
 
 FROM python:3.12.15-slim-bookworm AS runtime
 RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin nmp \

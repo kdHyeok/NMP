@@ -23,7 +23,7 @@
 
 ## Testing
 
-- 오프라인 회귀 테스트: `uv run --frozen python -B -m unittest tests.test_unit tests.test_setup -v`
+- 오프라인 회귀 테스트: `uv run --frozen python -B -m unittest tests.test_unit tests.test_setup tests.test_plugin_package -v`
 - Compose 더미 검사: runtime 이미지 빌드 후 `uv run --frozen python -B -m tests.smoke_compose`
 - 실계정 선택 검사: `NMP_CONFIG_DIR`을 설치된 `.nmp` 절대 경로로 지정하고 `uv run --frozen python -m tests.test_integration`
 - 실계정 테스트는 발송·초안 저장을 하지 않는다. SKIP은 PASS로 집계하지 않으며 실패 시 종료 코드 1.
@@ -38,3 +38,10 @@
 - 파일 암호화는 호스트 root/관리자로부터 비밀값을 숨기지 못한다. 개인 Tunnel 접근 권한을 다른 사용자에게 공유하지 않는다.
 - `healthy`/`readyz`는 OpenAI 인증이나 네이버 로그인 성공을 보장하지 않는다.
 - 원격 배포와 실계정 검증은 `docs/server-deployment.md` 절차로 별도 확인한다.
+
+## Plugin Packages
+
+- 패키지 리소스는 `src/naver_mail_mcp/plugin/`, 빌더는 `plugin_package.py`에 둔다.
+- `nmp package --public`은 연결 없는 공용 설치 도우미만 생성한다. 개인 설정을 읽지 않는다.
+- `nmp package --connection`은 사용자가 지정한 본인 MCP 연결의 `.app.json`만 추가한다. 자격증명은 포함하지 않는다.
+- GitHub 릴리스에는 공용 ZIP만 올린다. `.nmp/`의 개인 ZIP과 실제 연결 ID를 올리지 않는다.

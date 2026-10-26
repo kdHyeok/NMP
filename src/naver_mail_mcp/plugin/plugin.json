@@ -1,0 +1,27 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "naver-mail-plugin",
+  "version": "0.2.0",
+  "description": "Use your own self-hosted Naver Mail MCP connection with guided setup and safe mail workflows.",
+  "author": {"name": "kdHyeok"},
+  "homepage": "https://github.com/kdHyeok/NMP",
+  "repository": "https://github.com/kdHyeok/NMP",
+  "license": "MIT",
+  "keywords": ["naver", "email", "self-hosted", "mcp"],
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/setup/SKILL.md",
+      "interface": {
+        "displayName": "Naver Mail Plugin",
+        "shortDescription": "내 서버에서 연결하는 네이버 메일",
+        "longDescription": "사용자가 직접 운영하는 Naver Mail MCP 서버를 자신의 ChatGPT 연결로 사용하는 개인용 플러그인입니다.",
+        "developerName": "kdHyeok",
+        "logo": "./assets/logo.png",
+        "composerIcon": "./assets/logo.png",
+        "category": "Communication",
+        "capabilities": ["Read", "Write"],
+        "defaultPrompt": ["네이버 메일 연결을 확인해줘.", "받은메일함에서 최근 메일 5개를 찾아 요약해줘."]
+      }
+    }
+  }
+}

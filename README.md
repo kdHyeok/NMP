@@ -1,10 +1,19 @@
 # Naver Mail Plugin
 
+<p align="center"><img src="src/naver_mail_mcp/plugin/assets/logo.png" alt="NMP 로고" width="160"></p>
+
 **NMP**는 각 사용자가 자기 PC나 서버에 설치하고, 자기 네이버 메일을 자기 ChatGPT 또는 MCP 클라이언트에서 사용하는 오픈소스입니다. 네이버 자격증명을 받는 중앙 서비스는 운영하지 않습니다.
 
 로컬 MCP는 **stdio**, 웹 ChatGPT는 **개인 OpenAI Secure MCP Tunnel**로 연결합니다. 공개 `/mcp`, 네이버 OAuth 앱, 로그인 웹사이트, 도메인과 포트포워딩이 필요하지 않습니다. 설치한 장비와 Tunnel 클라이언트는 사용 중 켜져 있어야 합니다.
 
 ## 설치
+
+[플러그인 설치 도우미 ZIP 다운로드](https://github.com/kdHyeok/NMP/releases/latest/download/nmp-setup.zip) ·
+[개인 플러그인 패키지 생성·설치 안내](docs/plugin-distribution.md)
+
+공용 ZIP은 ChatGPT에서 설치를 안내하는 스킬 패키지입니다. 각 사용자가 자기 서버와 Tunnel을 설정한 뒤
+`nmp package --connection "<자신의 ChatGPT MCP 연결 상세 URL>"`로 개인 연결용 ZIP을 만듭니다.
+서버 비밀번호와 API 키는 패키지에 포함하지 않습니다.
 
 [uv](https://docs.astral.sh/uv/getting-started/installation/)와 Git을 먼저 설치합니다. Python 3.12를 권장합니다. Linux 서버 모드는 Docker Engine과 Docker Compose도 필요합니다.
 
@@ -77,7 +86,7 @@ uv run --frozen nmp doctor
 
 ```bash
 uv sync --frozen
-uv run --frozen python -B -m unittest tests.test_unit tests.test_setup -v
+uv run --frozen python -B -m unittest tests.test_unit tests.test_setup tests.test_plugin_package -v
 
 docker build --target test -t nmp:test .
 docker run --rm --network none nmp:test

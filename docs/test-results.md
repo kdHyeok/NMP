@@ -1,5 +1,22 @@
 # Test Results — Naver Mail Plugin
 
+## 2026-10-27 배포용 플러그인 패키지 검증
+
+- Windows / Python 3.12.12: 전체 55개 중 51 PASS, OS 전용 4 SKIP
+- 공용 ZIP에 개인 연결이 없고, 개인 ZIP에는 지정한 연결 1개와 스킬 2개만 포함되는지 검사
+- 비밀번호·API 키·메일 주소·Tunnel ID가 ZIP에 포함되지 않음 확인. 환경변수와 임의 `.env` 파일도 수집하지 않음
+- 잘못된 URL·ID·버전 거부와 기존 ZIP 보존, 경로 이탈·심볼릭 링크 제외,
+  반복 빌드 결과 일치, 공식 Agent Plugins 매니페스트 스키마 검사 PASS
+- Linux 비 root·읽기 전용·네트워크 차단 컨테이너에서 설치된 패키지 리소스와 회귀 검사 PASS
+- 실제 ChatGPT에서 공용 ZIP의 setup 스킬 1개, 개인 ZIP의 setup·naver-mail 스킬 2개와
+  기존 MCP 앱 연결 1개가 인식되는 것 확인
+- 개인 패키지를 선택한 새 웹 대화에서 연결 재생성 없이 get_profile·list_folders 실제 조회 성공
+- ChatGPT의 이전 버전 ZIP 거부를 확인하고 `--version`으로 더 높은 버전을 지정한 업데이트 성공 확인
+- 제공받은 로고는 내용·크기 변경 없이 1254×1254 PNG로 변환해 README와 ZIP에 포함했다.
+  매니페스트의 logo·composerIcon 참조와 파일 보존은 확인했으나 검사한 ChatGPT 웹 상세 화면은 기본 아이콘으로 표시됐다.
+- 공개 배포 대상은 연결 없는 설치 도우미 ZIP과 체크섬이다. 개인 ZIP은 `.nmp/`에만 보관한다.
+- 별도 타인의 계정 설치와 공개 디렉터리 심사는 수행하지 않았다. SMTP 발송·초안 저장도 미실행
+
 ## 2026-10-27 Windows 실계정·개인 Tunnel·웹 ChatGPT 연결 검증
 
 - 검증 코드: `7e401f0` (`feature: 개인별 암호화 설정과 비공개 Tunnel 설치 지원`)

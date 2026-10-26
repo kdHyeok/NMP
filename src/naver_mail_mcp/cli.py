@@ -111,6 +111,8 @@ def info(directory: Path, config=None):
         print("Authentication: No authentication (private, single-owner Tunnel only)")
         print("Tunnel and custom MCP permissions are required in your OpenAI account.")
     print("No public MCP endpoint, domain or inbound port is created.")
+    if config["mode"] != "local":
+        print("After registering your own MCP connection: nmp package --connection <your ChatGPT plugin URL>")
 
 
 def mcp_command(directory: Path) -> str:
@@ -170,6 +172,11 @@ def main():
     connect = commands.add_parser("tunnel", help="Run the private OpenAI Tunnel")
     connect.add_argument("--client", help="Path to an already installed official tunnel-client")
     connect.add_argument("--check", action="store_true", help="Run Tunnel doctor without starting the daemon")
+    package = commands.add_parser("package", help="Build an installable ChatGPT plugin ZIP without credentials")
+    kind = package.add_mutually_exclusive_group(required=True)
+    kind.add_argument("--connection", help="Your registered NMP MCP plugin detail URL or asdk_app ID")
+    kind.add_argument("--public", action="store_true", help="Build the connection-free onboarding ZIP for distribution")
+    package.add_argument("--version", help="Use a higher major.minor.patch version when updating an installed plugin")
     args = parser.parse_args()
     directory = args.config_dir.absolute()
     try:
@@ -181,6 +188,20 @@ def main():
             doctor(directory)
         elif args.command == "tunnel":
             return tunnel(directory, client=args.client, check=args.check)
+        elif args.command == "package":
+            from .plugin_package import build_package
+            if args.public:
+                target = Path.cwd() / "dist" / "nmp-setup.zip"
+            else:
+                if load_config(directory)["mode"] == "local":
+                    raise ValueError("Configure tunnel or server mode for web ChatGPT first")
+                target = directory / "naver-mail-plugin.zip"
+            print("Plugin ZIP:", build_package(target, args.connection, version=args.version))
+            print("Upload in ChatGPT Plugins > + > Upload plugin archive.")
+            if args.public:
+                print("Setup guidance only; each user must generate their own connected ZIP.")
+            else:
+                print("Private package: use only in your own ChatGPT account. Do not publish this ZIP.")
         else:
             os.environ["NMP_CONFIG_DIR"] = str(directory)
             from .server import main as serve
