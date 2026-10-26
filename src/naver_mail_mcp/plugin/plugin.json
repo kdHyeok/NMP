@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "naver-mail-plugin",
-  "version": "0.2.0",
+  "version": "0.2.6",
   "description": "Use your own self-hosted Naver Mail MCP connection with guided setup and safe mail workflows.",
   "author": {"name": "kdHyeok"},
   "homepage": "https://github.com/kdHyeok/NMP",

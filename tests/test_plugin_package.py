@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import stat
+import struct
 import sys
 import tempfile
 import unittest
@@ -43,7 +44,15 @@ class PluginPackageTests(unittest.TestCase):
         self.assertIn(options["onboardingSkill"].removeprefix("./"), files)
         for field in ("logo", "composerIcon"):
             self.assertIn(options["interface"][field].removeprefix("./"), files)
-        self.assertTrue(files["assets/logo.png"].startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertEqual(files[options["interface"][field].removeprefix("./")], package.resource("assets/logo.png"))
+        logo = files["assets/logo.png"]
+        self.assertTrue(logo.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(logo[12:16], b"IHDR")
+        width, height = struct.unpack(">II", logo[16:24])
+        self.assertEqual(width, height)
+        self.assertGreaterEqual(width, 48)
+        self.assertLessEqual(width, 4096)
+        self.assertLessEqual(len(logo), 5 * 1024 * 1024)
         for name, data in files.items():
             if not name.startswith("assets/"):
                 data.decode("utf-8")
