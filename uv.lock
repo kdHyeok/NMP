@@ -387,11 +387,15 @@ name = "naver-mail-mcp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "mcp" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mcp", specifier = ">=2.3.0,<3" }]
+requires-dist = [
+    { name = "cryptography", specifier = ">=46.0.5,<47" },
+    { name = "mcp", specifier = ">=2.3.0,<3" },
+]
 
 [[package]]
 name = "opentelemetry-api"

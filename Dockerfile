@@ -24,10 +24,12 @@ RUN set -eu; \
 
 FROM build AS test
 COPY tests ./tests
-CMD ["/app/.venv/bin/python", "-B", "-m", "unittest", "tests.test_unit", "-v"]
+COPY scripts ./scripts
+CMD ["/app/.venv/bin/python", "-B", "-m", "unittest", "tests.test_unit", "tests.test_setup", "-v"]
 
 FROM python:3.12.15-slim-bookworm AS runtime
-RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin nmp
+RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin nmp \
+    && mkdir /run/nmp && chown 10001:10001 /run/nmp && chmod 0700 /run/nmp
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY --from=build /app/LICENSE /app/LICENSE
@@ -35,6 +37,7 @@ COPY --from=build /opt/tunnel-client /opt/tunnel-client
 ENV PATH="/app/.venv/bin:/opt/tunnel-client:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    NMP_CONFIG_DIR=/run/nmp \
     HOME=/tmp
 USER 10001:10001
-CMD ["/opt/tunnel-client/tunnel-client", "run"]
+CMD ["python", "-B", "-m", "naver_mail_mcp.cli", "tunnel"]

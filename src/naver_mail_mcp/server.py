@@ -50,14 +50,18 @@ def _json_result(value: object) -> str:
 
 
 def _get_credentials() -> tuple[str, str, str]:
-    """Get credentials from environment variables or a mounted password file.
+    """Get credentials from encrypted config or legacy environment/password files.
 
     Returns:
         Tuple of (email, password, full_name).
 
     Raises:
-        ValueError: If required env vars are missing.
+        ValueError: If credentials are missing or configuration is invalid.
     """
+    if directory := os.environ.get("NMP_CONFIG_DIR"):
+        from .config import load_config
+        config = load_config(Path(directory))
+        return config["email"], config["password"], config["name"]
     email_address = os.environ.get("NAVER_EMAIL_ADDRESS", "")
     password = os.environ.get("NAVER_EMAIL_PASSWORD", "")
     password_file = os.environ.get("NAVER_EMAIL_PASSWORD_FILE", "")

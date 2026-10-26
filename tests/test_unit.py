@@ -271,7 +271,7 @@ class MailTests(unittest.TestCase):
         self.assertIn("1 passed, 2 failed, 1 skipped", out.getvalue())
 
     def test_missing_credentials_fail_before_server_start(self):
-        env = dict(os.environ, NAVER_EMAIL_ADDRESS="", NAVER_EMAIL_PASSWORD="", NAVER_EMAIL_PASSWORD_FILE="")
+        env = dict(os.environ, NAVER_EMAIL_ADDRESS="", NAVER_EMAIL_PASSWORD="", NAVER_EMAIL_PASSWORD_FILE="", NMP_CONFIG_DIR="")
         result = subprocess.run([sys.executable, "-m", "naver_mail_mcp.server"], env=env, capture_output=True, timeout=20)
         self.assertEqual(result.returncode, 1)
         self.assertIn(b"Missing required environment variables", result.stderr)

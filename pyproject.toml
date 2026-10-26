@@ -23,7 +23,9 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.3.0,<3",
+    "cryptography>=46.0.5,<47",
 ]
 
 [project.scripts]
 naver-mail-mcp = "naver_mail_mcp.server:main"
+nmp = "naver_mail_mcp.cli:main"

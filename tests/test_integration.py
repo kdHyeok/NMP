@@ -1,7 +1,7 @@
 """Integration tests for Naver Mail MCP Server.
 
 Run with: python -m tests.test_integration
-Supply credentials as environment variables, or use uv run --env-file .env.
+Set NMP_CONFIG_DIR to the encrypted config directory, or use legacy environment variables.
 """
 
 from __future__ import annotations
@@ -9,15 +9,16 @@ from __future__ import annotations
 import os
 import sys
 from unittest import SkipTest
+from unittest.mock import patch
 
 from naver_mail_mcp import imap_client
 
 
 def get_creds():
-    if not os.environ.get("NAVER_EMAIL_ADDRESS") or not (
+    if not os.environ.get("NMP_CONFIG_DIR") and (not os.environ.get("NAVER_EMAIL_ADDRESS") or not (
         os.environ.get("NAVER_EMAIL_PASSWORD") or os.environ.get("NAVER_EMAIL_PASSWORD_FILE")
-    ):
-        raise SkipTest("Set the Naver address and password or password file to run live tests.")
+    )):
+        raise SkipTest("Set NMP_CONFIG_DIR or legacy Naver credentials to run live tests.")
     from naver_mail_mcp.server import _get_credentials
     return _get_credentials()
 
@@ -117,9 +118,8 @@ def test_download_attachment():
 
 
 def test_missing_env_vars():
-    """Test that missing env vars raise ValueError."""
-    saved = os.environ.pop("NAVER_EMAIL_ADDRESS", None)
-    try:
+    """Check missing credentials independently of the configured live account."""
+    with patch.dict(os.environ, NMP_CONFIG_DIR="", NAVER_EMAIL_ADDRESS="", NAVER_EMAIL_PASSWORD="", NAVER_EMAIL_PASSWORD_FILE=""):
         from naver_mail_mcp.server import _get_credentials
         try:
             _get_credentials()
@@ -128,9 +128,6 @@ def test_missing_env_vars():
         except ValueError as e:
             print(f"  Correct error: {e}")
             return True
-    finally:
-        if saved:
-            os.environ["NAVER_EMAIL_ADDRESS"] = saved
 
 
 def test_wrong_password():

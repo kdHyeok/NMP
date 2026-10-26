@@ -1,5 +1,38 @@
 # Test Results — Naver Mail Plugin
 
+## 2026-10-27 개인별 설치·암호화 설정·비공개 Tunnel 검증
+
+- Windows / Python 3.12.12: `python -B -m unittest tests.test_unit tests.test_setup -v`
+  47개 중 44개 PASS, POSIX/Linux 전용 3개 SKIP
+- Linux amd64 / Python 3.12.15: 같은 테스트를 네트워크 차단, UID 10001,
+  읽기 전용 루트와 임시 tmpfs에서 실행. 47개 중 44개 PASS, Windows 전용 3개 SKIP
+- Fernet 암호화 왕복, 암호문 손상·키 누락·잘못된 키 거부, 명시적 변경과 기존 키 보존 PASS
+- POSIX 디렉터리 700·파일 600, 공개 읽기 권한·심볼릭 링크 거부 PASS
+- Windows 현재 사용자/SYSTEM DACL 설정 및 광범위 그룹 권한 부재 PASS
+- Bash/PowerShell 설치기의 공백·작은따옴표 경로, 인자 경계, 실패 시 중단 PASS
+- 생성한 `.nmp/mcp.json` 명령으로 실제 stdio 하위 프로세스 실행, 구·신 프로토콜의
+  도구 9개 검색과 발송 거절 PASS. Linux 가상환경 Python 경로도 유지됨
+- 생성 설정·출력·명령 인자에 앱 비밀번호/Tunnel 키 부재, Tunnel 자식 환경으로만 키 전달,
+  부모 환경 유지와 doctor 실패 시 실행 중단 PASS
+- Tunnel 자동 다운로드의 SHA256 검증, 불일치 거부와 ZIP 경로 이탈 방지 PASS
+- 공식 tunnel-client v0.0.17 Windows doctor로 암호화 설정과 한글·공백·작은따옴표 경로 검사 PASS
+  (더미 ID/키, 닫힌 로컬 control-plane 주소. 실제 키 인증 증거가 아님)
+- 공식 Linux amd64 아카이브 체크섬 검사, runtime/test 이미지 빌드 PASS
+- `python -B -m tests.smoke_compose`: 더미 자격증명과 `network_mode: none`을 사용하는
+  일회성 Compose 프로젝트에서 다음 항목 PASS
+  - 비 root UID, 읽기 전용 루트·암호화 설정 마운트, 게시 포트 없음
+  - Docker 설정 환경변수에 평문 자격증명 없음, 서버의 암호화 설정 읽기
+  - stdio child `running`, 닫힌 control-plane `degraded`, health 상태 확인
+  - 프로세스 SIGKILL 후 `unless-stopped` 자동 재시작과 설정 재사용
+  - 검사 종료 후 전용 컨테이너·볼륨 제거
+- `uv --cache-dir .uv-cache lock --check --offline`, `uv --cache-dir .uv-cache pip check`,
+  `git diff --check` PASS
+- Windows/Linux/macOS용 CI 정의를 추가했으며 GitHub Actions 실행은 아직 하지 않았다.
+- 실제 네이버 로그인·초안 저장·발송, 개인 OpenAI Tunnel 인증, 웹 ChatGPT 호출,
+  donh-ser 배포와 호스트 재부팅은 미실행. macOS/arm64 실기 검증도 하지 않았다.
+- `/readyz`와 `healthy`는 OpenAI 인증이나 메일 로그인 성공을 보장하지 않는다.
+  키와 암호문이 같은 장비에 있으므로 호스트 관리자 접근은 방어 범위에 포함하지 않는다.
+
 ## 2026-10-22 Docker Compose 서버 구성 검증
 
 - Windows / Python 3.12.12: `python -B -m unittest tests.test_unit -q` 32개 PASS
